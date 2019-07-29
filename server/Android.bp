@@ -111,6 +111,7 @@ cc_library_static {
     defaults: [
         "netd_defaults",
         "needs_netd_direct_connect_rule_defaults",
+        "ignores_ftp_pptp_conntrack_failure",
     ],
     include_dirs: [
         "system/netd/include",
