@@ -733,6 +733,9 @@ binder::Status NetdNativeService::strictUidCleartextPenalty(int32_t uid, int32_t
     NETD_LOCKING_RPC(gCtls->strictCtrl.lock, PERM_NETWORK_STACK, PERM_MAINLINE_NETWORK_STACK);
     StrictPenalty penalty;
     switch (policyPenalty) {
+        case 0:
+            penalty = INVALID;
+            break;
         case INetd::PENALTY_POLICY_REJECT:
             penalty = REJECT;
             break;

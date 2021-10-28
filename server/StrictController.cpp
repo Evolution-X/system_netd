@@ -164,35 +164,48 @@ int StrictController::setUidCleartextPenalty(uid_t uid, StrictPenalty penalty) {
     // need to do is clear the chain.
     std::string perUidChain = StringPrintf("st_clear_caught_%u", uid);
 
-    std::vector<std::string> commands;
-    if (penalty == ACCEPT) {
-        // Clean up any old rules
-        commands = {
-            "*filter",
-            StringPrintf("-D %s -m owner --uid-owner %d -j %s",
-                         LOCAL_OUTPUT, uid, LOCAL_CLEAR_DETECT),
-            StringPrintf("-D %s -m owner --uid-owner %d -j %s",
-                         LOCAL_CLEAR_CAUGHT, uid, perUidChain.c_str()),
-            StringPrintf("-F %s", perUidChain.c_str()),
-            StringPrintf("-X %s", perUidChain.c_str()),
-        };
-    } else {
-        // Always take a detour to investigate this UID
-        commands.push_back("*filter");
-        commands.push_back(StringPrintf(":%s -", perUidChain.c_str()));
-        commands.push_back(StringPrintf("-I %s -m owner --uid-owner %d -j %s",
-                                        LOCAL_OUTPUT, uid, LOCAL_CLEAR_DETECT));
-        commands.push_back(StringPrintf("-I %s -m owner --uid-owner %d -j %s",
-                                        LOCAL_CLEAR_CAUGHT, uid, perUidChain.c_str()));
+    // UID -1 is used to append a global penalty
+    std::string uidOwnerMatch = uid == static_cast<unsigned int>(-1) ? ""
+                                            : StringPrintf("-m owner --uid-owner %d", uid);
+    // Cleartext DNS is allowed on uid 0 so that private DNS can be set up
+    std::string destinationPort = uid == 0 ? "-p udp --dport 53" : "";
 
-        if (penalty == LOG) {
-            commands.push_back(StringPrintf("-A %s -j %s", perUidChain.c_str(), LOCAL_PENALTY_LOG));
-        } else if (penalty == REJECT) {
-            commands.push_back(StringPrintf("-A %s -j %s", perUidChain.c_str(),
-                                            LOCAL_PENALTY_REJECT));
-        }
+    std::vector<std::string> commands;
+    commands.push_back("*filter");
+    if (penalty == INVALID) {
+        commands.push_back(StringPrintf("-D %s %s %s -j %s", LOCAL_OUTPUT, uidOwnerMatch.c_str(),
+                                        destinationPort.c_str(), LOCAL_CLEAR_DETECT));
+        commands.push_back(StringPrintf("-D %s %s %s -j %s", LOCAL_CLEAR_CAUGHT,
+                                        uidOwnerMatch.c_str(), destinationPort.c_str(),
+                                        perUidChain.c_str()));
+        commands.push_back(StringPrintf("-F %s", perUidChain.c_str()));
+        commands.push_back(StringPrintf("-X %s", perUidChain.c_str()));
+    } else {
+        // UID -1 is appended for other UID penalties to be prioritized
+        std::string operation = uid == static_cast<unsigned int>(-1) ? "-A" : "-I";
+        commands.push_back(StringPrintf(":%s -", perUidChain.c_str()));
+        commands.push_back(StringPrintf("%s %s %s %s -j %s", operation.c_str(), LOCAL_OUTPUT,
+                                        uidOwnerMatch.c_str(), destinationPort.c_str(),
+                                        LOCAL_CLEAR_DETECT));
+        commands.push_back(StringPrintf("%s %s %s %s -j %s", operation.c_str(), LOCAL_CLEAR_CAUGHT,
+                                        uidOwnerMatch.c_str(), destinationPort.c_str(),
+                                        perUidChain.c_str()));
+        commands.push_back(StringPrintf("-A %s -j %s", perUidChain.c_str(),
+                                        penaltyToString(penalty)));
     }
     commands.push_back("COMMIT\n");
 
     return (execIptablesRestore(V4V6, Join(commands, "\n")) == 0) ? 0 : -EREMOTEIO;
+}
+
+inline const char *StrictController::penaltyToString(StrictPenalty penalty) {
+    switch (penalty) {
+    case INVALID:
+    case ACCEPT:
+        return "ACCEPT";
+    case LOG:
+        return LOCAL_PENALTY_LOG;
+    case REJECT:
+        return LOCAL_PENALTY_REJECT;
+    }
 }

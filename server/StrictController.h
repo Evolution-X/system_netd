@@ -41,6 +41,7 @@ public:
     static const char* LOCAL_CLEAR_CAUGHT;
     static const char* LOCAL_PENALTY_LOG;
     static const char* LOCAL_PENALTY_REJECT;
+    static const char* penaltyToString(StrictPenalty penalty);
     std::mutex lock;
 
   protected:
